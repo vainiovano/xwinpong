@@ -1,6 +1,9 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 
@@ -10,6 +13,18 @@ static inline int16_t clamp(int16_t val, int16_t min, int16_t max) {
   if (val > max)
     return max;
   return val;
+}
+
+static void collide(int16_t *speed, int16_t *pos, int16_t min_pos,
+                    int16_t max_pos) {
+  *pos += *speed;
+  if (*pos > max_pos) {
+    *pos = 2 * max_pos - *pos;
+    *speed *= -1;
+  } else if (*pos < min_pos) {
+    *pos = 2 * min_pos - *pos;
+    *speed *= -1;
+  }
 }
 
 struct paddle {
@@ -82,12 +97,15 @@ int main(void) {
   const uint32_t values[] = {screen->white_pixel, XCB_EVENT_MASK_KEY_PRESS};
 
   /* Create the ball */
-  xcb_create_window(connection,           /* connection */
-                    XCB_COPY_FROM_PARENT, /* depth */
-                    window,               /* window id */
-                    screen->root,         /* parent window */
-                    screen->width_in_pixels / 2,
-                    screen->height_in_pixels / 2,  /* x, y */
+  int16_t ball_xspeed = 10;
+  int16_t ball_yspeed = 10;
+  int16_t ball_x = screen->width_in_pixels / 2 - 150 / 2;
+  int16_t ball_y = screen->height_in_pixels / 2 - 150 / 2;
+  xcb_create_window(connection,                    /* connection */
+                    XCB_COPY_FROM_PARENT,          /* depth */
+                    window,                        /* window id */
+                    screen->root,                  /* parent window */
+                    ball_x, ball_y,                /* x, y */
                     150, 150,                      /* width, height */
                     0,                             /* border width */
                     XCB_WINDOW_CLASS_INPUT_OUTPUT, /* class */
@@ -130,53 +148,66 @@ int main(void) {
   xcb_map_window(connection, right_paddle.window);
   xcb_flush(connection);
 
-  xcb_generic_event_t *event = NULL;
-  while ((event = xcb_wait_for_event(connection)) != NULL) {
-    if (event->response_type == 0) {
-      /* TODO: is this cast legal? */
-      fprintf(stderr, "Received X11 error %d\n",
-              ((xcb_generic_error_t *)event)->error_code);
-      free(event);
-      continue;
-    }
-
-    switch (event->response_type & ~0x80) {
-    /*case XCB_EXPOSE:
-      xcb_poly_rectangle(connection, window, foreground, 1, &rectangle);
-      xcb_flush(connection);*/
-    case XCB_CLIENT_MESSAGE:
-      if (((xcb_client_message_event_t *)event)->data.data32[0] ==
-          delete_reply->atom) {
+  for (;;) {
+    xcb_generic_event_t *event = NULL;
+    while ((event = xcb_poll_for_event(connection)) != NULL) {
+      if (event->response_type == 0) {
+        /* TODO: is this cast legal? */
+        fprintf(stderr, "Received X11 error %d\n",
+                ((xcb_generic_error_t *)event)->error_code);
         free(event);
-        goto end;
+        continue;
       }
-      break;
-    case XCB_KEY_PRESS: {
-      xcb_key_press_event_t *kp = (xcb_key_press_event_t *)event;
-      switch (kp->detail) {
-        /* TODO: find these codes from a header file? */
-      case 25:
-        paddle_move(&left_paddle, connection, screen, 0, -20);
-        xcb_flush(connection);
+
+      switch (event->response_type & ~0x80) {
+      /*case XCB_EXPOSE:
+        xcb_poly_rectangle(connection, window, foreground, 1, &rectangle);
+        xcb_flush(connection);*/
+      case XCB_CLIENT_MESSAGE:
+        if (((xcb_client_message_event_t *)event)->data.data32[0] ==
+            delete_reply->atom) {
+          free(event);
+          goto end;
+        }
         break;
-      case 39:
-        paddle_move(&left_paddle, connection, screen, 0, 20);
-        xcb_flush(connection);
-        break;
-      case 111:
-        paddle_move(&right_paddle, connection, screen, 0, -20);
-        xcb_flush(connection);
-        break;
-      case 116:
-        paddle_move(&right_paddle, connection, screen, 0, 20);
-        xcb_flush(connection);
+      case XCB_KEY_PRESS: {
+        xcb_key_press_event_t *kp = (xcb_key_press_event_t *)event;
+        switch (kp->detail) {
+          /* TODO: find these codes from a header file? */
+        case 25:
+          paddle_move(&left_paddle, connection, screen, 0, -20);
+          xcb_flush(connection);
+          break;
+        case 39:
+          paddle_move(&left_paddle, connection, screen, 0, 20);
+          xcb_flush(connection);
+          break;
+        case 111:
+          paddle_move(&right_paddle, connection, screen, 0, -20);
+          xcb_flush(connection);
+          break;
+        case 116:
+          paddle_move(&right_paddle, connection, screen, 0, 20);
+          xcb_flush(connection);
+          break;
+        }
+      }
+      default:
         break;
       }
+      free(event);
     }
-    default:
-      break;
-    }
-    free(event);
+    collide(&ball_xspeed, &ball_x, 0, screen->width_in_pixels - 150);
+    collide(&ball_yspeed, &ball_y, 0, screen->height_in_pixels - 150);
+    const uint32_t coords[] = {ball_x, ball_y};
+    xcb_configure_window(connection, window,
+                         XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
+    xcb_flush(connection);
+    const struct timespec wait_time = {
+        .tv_sec = 0,
+        .tv_nsec = 50000000,
+    };
+    nanosleep(&wait_time, NULL);
   }
 
 end:
