@@ -17,7 +17,6 @@ static inline int16_t clamp(int16_t val, int16_t min, int16_t max) {
 
 static void collide(int16_t *speed, int16_t *pos, int16_t min_pos,
                     int16_t max_pos) {
-  *pos += *speed;
   if (*pos > max_pos) {
     *pos = 2 * max_pos - *pos;
     *speed *= -1;
@@ -148,6 +147,8 @@ int main(void) {
   xcb_map_window(connection, right_paddle.window);
   xcb_flush(connection);
 
+  int lost = 0;
+
   for (;;) {
     xcb_generic_event_t *event = NULL;
     while ((event = xcb_poll_for_event(connection)) != NULL) {
@@ -197,12 +198,42 @@ int main(void) {
       }
       free(event);
     }
-    collide(&ball_xspeed, &ball_x, 0, screen->width_in_pixels - 150);
+
+    ball_x += ball_xspeed;
+    ball_y += ball_yspeed;
+
+    if (ball_x < left_paddle.x + 150) {
+      if (!lost && ball_y > left_paddle.y - 150 &&
+          ball_y < left_paddle.y + 150) {
+        collide(&ball_xspeed, &ball_x, left_paddle.x + 150, INT16_MAX);
+        lost = 0;
+      } else {
+        lost = 1;
+      }
+    } else if (ball_x > right_paddle.x - 150) {
+      if (!lost && ball_y > right_paddle.y - 150 &&
+          ball_y < right_paddle.y + 150) {
+        collide(&ball_xspeed, &ball_x, INT16_MIN, right_paddle.x - 150);
+        lost = 0;
+      } else {
+        lost = 1;
+      }
+    }
     collide(&ball_yspeed, &ball_y, 0, screen->height_in_pixels - 150);
+
+    if (ball_x < 0) {
+      puts("Right wins!");
+      goto end;
+    } else if (ball_x > screen->width_in_pixels - 150) {
+      puts("Left wins!");
+      goto end;
+    }
+
     const uint32_t coords[] = {ball_x, ball_y};
     xcb_configure_window(connection, window,
                          XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
     xcb_flush(connection);
+
     const struct timespec wait_time = {
         .tv_sec = 0,
         .tv_nsec = 50000000,
