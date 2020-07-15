@@ -206,6 +206,12 @@ int main(void) {
       if (!lost && ball_y > left_paddle.y - 150 &&
           ball_y < left_paddle.y + 150) {
         collide(&ball_xspeed, &ball_x, left_paddle.x + 150, INT16_MAX);
+	/* Make the game advance faster */
+        ball_xspeed += 1;
+
+        ball_yspeed += (ball_y - left_paddle.y) / 5;
+        ball_yspeed = clamp(ball_yspeed, -20, 20);
+
         lost = 0;
       } else {
         lost = 1;
@@ -214,6 +220,11 @@ int main(void) {
       if (!lost && ball_y > right_paddle.y - 150 &&
           ball_y < right_paddle.y + 150) {
         collide(&ball_xspeed, &ball_x, INT16_MIN, right_paddle.x - 150);
+        ball_xspeed -= 1;
+
+        ball_yspeed += (ball_y - right_paddle.y) / 5;
+        ball_yspeed = clamp(ball_yspeed, -20, 20);
+
         lost = 0;
       } else {
         lost = 1;
