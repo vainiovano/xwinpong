@@ -116,26 +116,20 @@ int main(void) {
       xcb_intern_atom_unchecked(connection, 0, 12, "WM_PROTOCOLS");
   const xcb_intern_atom_cookie_t delete_cookie =
       xcb_intern_atom_unchecked(connection, 0, 16, "WM_DELETE_WINDOW");
-  /* Just use UTF-8 instead of XCB_ATOM_WM_NAME */
-  const xcb_intern_atom_cookie_t name_cookie =
-      xcb_intern_atom_unchecked(connection, 0, 12, "_NET_WM_NAME");
 
   xcb_intern_atom_reply_t *const protocol_reply =
       xcb_intern_atom_reply(connection, protocol_cookie, NULL);
   xcb_intern_atom_reply_t *const delete_reply =
       xcb_intern_atom_reply(connection, delete_cookie, NULL);
-  xcb_intern_atom_reply_t *const name_reply =
-      xcb_intern_atom_reply(connection, name_cookie, NULL);
 
   xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
                       protocol_reply->atom, XCB_ATOM_ATOM, 32, 1,
                       &delete_reply->atom);
   xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
-                      name_reply->atom, XCB_ATOM_STRING, 8, 8, "XCB pong");
+                      XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, 8, "XCB pong");
 
   /* delete_reply is used for checking the client messages */
   free(protocol_reply);
-  free(name_reply);
 
   /* Create the paddles here */
   struct paddle left_paddle = paddle_create(connection, screen, 0, 0);
