@@ -30,6 +30,7 @@ struct paddle {
   xcb_window_t window;
   int16_t x;
   int16_t y;
+  int16_t speed;
 };
 
 static struct paddle paddle_create(xcb_connection_t *connection,
@@ -49,13 +50,13 @@ static struct paddle paddle_create(xcb_connection_t *connection,
                     screen->root_visual,           /* visual */
                     mask, values                   /* masks */
   );
-  return (struct paddle){window, x, y};
+  return (struct paddle){window, x, y, 0};
 }
 
 static void paddle_move(struct paddle *paddle, xcb_connection_t *connection,
-                        const xcb_screen_t *screen, int16_t dx, int16_t dy) {
-  paddle->x = clamp(paddle->x + dx, 0, screen->width_in_pixels - 150);
-  paddle->y = clamp(paddle->y + dy, 0, screen->height_in_pixels - 150);
+                        const xcb_screen_t *screen) {
+  paddle->y += paddle->speed;
+  collide(&paddle->speed, &paddle->y, 0, screen->height_in_pixels - 150);
   const uint32_t coords[] = {paddle->x, paddle->y};
   xcb_configure_window(connection, paddle->window,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
@@ -170,20 +171,16 @@ int main(void) {
         switch (kp->detail) {
           /* TODO: find these codes from a header file? */
         case 25:
-          paddle_move(&left_paddle, connection, screen, 0, -20);
-          xcb_flush(connection);
+          left_paddle.speed -= 5;
           break;
         case 39:
-          paddle_move(&left_paddle, connection, screen, 0, 20);
-          xcb_flush(connection);
+          left_paddle.speed += 5;
           break;
         case 111:
-          paddle_move(&right_paddle, connection, screen, 0, -20);
-          xcb_flush(connection);
+          right_paddle.speed -= 5;
           break;
         case 116:
-          paddle_move(&right_paddle, connection, screen, 0, 20);
-          xcb_flush(connection);
+          right_paddle.speed += 5;
           break;
         }
       }
@@ -193,6 +190,9 @@ int main(void) {
       free(event);
     }
 
+    paddle_move(&left_paddle, connection, screen);
+    paddle_move(&right_paddle, connection, screen);
+
     ball_x += ball_xspeed;
     ball_y += ball_yspeed;
 
@@ -200,7 +200,7 @@ int main(void) {
       if (!lost && ball_y > left_paddle.y - 150 &&
           ball_y < left_paddle.y + 150) {
         collide(&ball_xspeed, &ball_x, left_paddle.x + 150, INT16_MAX);
-	/* Make the game advance faster */
+        /* Make the game advance faster */
         ball_xspeed += 1;
 
         ball_yspeed += (ball_y - left_paddle.y) / 5;
