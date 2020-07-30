@@ -3,9 +3,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
+
+#define ARR_LEN(arr) (sizeof arr / sizeof arr[0])
 
 static inline int16_t clamp(int16_t val, int16_t min, int16_t max) {
   if (val < min)
@@ -26,6 +29,83 @@ static void collide(int16_t *speed, int16_t *pos, int16_t min_pos,
   }
 }
 
+enum atom_type {
+  PROTOCOL_ATOM,
+  DELETE_WINDOW_ATOM,
+  WINDOW_TYPE_ATOM,
+  UTILITY_ATOM
+};
+
+static const char *const atom_names[] = {
+    [PROTOCOL_ATOM] = "WM_PROTOCOLS",
+    [DELETE_WINDOW_ATOM] = "WM_DELETE_WINDOW",
+    [WINDOW_TYPE_ATOM] = "_NET_WM_WINDOW_TYPE",
+    [UTILITY_ATOM] = "_NET_WM_WINDOW_TYPE_UTILITY"};
+
+static xcb_window_t window_create(xcb_connection_t *connection,
+                                  const xcb_screen_t *screen, uint32_t color,
+                                  int16_t x, int16_t y, uint16_t width,
+                                  uint16_t height) {
+  const xcb_window_t window = xcb_generate_id(connection);
+  const uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+  const uint32_t values[] = {color, XCB_EVENT_MASK_KEY_PRESS};
+  xcb_create_window(connection,                    /* connection */
+                    XCB_COPY_FROM_PARENT,          /* depth */
+                    window,                        /* window id */
+                    screen->root,                  /* parent window */
+                    x, y,                          /* x, y */
+                    width, height,                 /* width, height */
+                    0,                             /* border width */
+                    XCB_WINDOW_CLASS_INPUT_OUTPUT, /* class */
+                    screen->root_visual,           /* visual */
+                    mask, values                   /* masks */
+  );
+  return window;
+}
+
+/* Compilers: please don't add padding between the elements */
+struct size_hints {
+  uint32_t flags;
+  uint32_t pad[4];
+  int32_t min_width, min_height;
+  int32_t max_width, max_height;
+  int32_t width_inc, height_inc;
+  int32_t min_aspect_num, min_aspect_den;
+  int32_t max_aspect_num, max_aspect_den;
+  int32_t base_width, base_height;
+  int32_t win_gravity;
+};
+
+/* Sets some ICCC and EWMH atoms for window managers */
+static void window_setup(xcb_connection_t *connection, xcb_window_t window,
+                         xcb_intern_atom_reply_t *atom_replies[],
+                         const char *window_name) {
+  if (atom_replies[PROTOCOL_ATOM] != NULL &&
+      atom_replies[DELETE_WINDOW_ATOM] != NULL) {
+    xcb_change_property(connection, XCB_PROP_MODE_APPEND, window,
+                        atom_replies[PROTOCOL_ATOM]->atom, XCB_ATOM_ATOM, 32, 1,
+                        &atom_replies[DELETE_WINDOW_ATOM]->atom);
+  }
+  if (atom_replies[WINDOW_TYPE_ATOM] != NULL &&
+      atom_replies[UTILITY_ATOM] != NULL) {
+    xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
+                        atom_replies[WINDOW_TYPE_ATOM]->atom, XCB_ATOM_ATOM, 32,
+                        1, &atom_replies[UTILITY_ATOM]->atom);
+  }
+  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
+                      XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(window_name),
+                      window_name);
+  /* Program-specified position, size, min size and max size */
+  struct size_hints size_hints = {.flags = 4 | 8 | 16 | 32,
+                                  .min_width = 150,
+                                  .max_width = 150,
+                                  .min_height = 150,
+                                  .max_height = 150};
+  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
+                      XCB_ATOM_WM_NORMAL_HINTS, XCB_ATOM_WM_SIZE_HINTS, 32, 18,
+                      &size_hints);
+}
+
 struct paddle {
   xcb_window_t window;
   int16_t x;
@@ -36,20 +116,8 @@ struct paddle {
 static struct paddle paddle_create(xcb_connection_t *connection,
                                    const xcb_screen_t *screen, int16_t x,
                                    int16_t y) {
-  const xcb_window_t window = xcb_generate_id(connection);
-  const uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_OVERRIDE_REDIRECT;
-  const uint32_t values[] = {screen->black_pixel, 1};
-  xcb_create_window(connection,                    /* connection */
-                    XCB_COPY_FROM_PARENT,          /* depth */
-                    window,                        /* window id */
-                    screen->root,                  /* parent window */
-                    x, y,                          /* x, y */
-                    150, 150,                      /* width, height */
-                    0,                             /* border width */
-                    XCB_WINDOW_CLASS_INPUT_OUTPUT, /* class */
-                    screen->root_visual,           /* visual */
-                    mask, values                   /* masks */
-  );
+  const xcb_window_t window =
+      window_create(connection, screen, screen->black_pixel, x, y, 150, 150);
   return (struct paddle){window, x, y, 0};
 }
 
@@ -91,53 +159,41 @@ int main(void) {
   uint32_t values[2] = {screen->black_pixel, 0};
   xcb_create_gc(connection, foreground, screen->root, mask, values);*/
 
-  const xcb_window_t window = xcb_generate_id(connection);
+  xcb_intern_atom_cookie_t atom_requests[ARR_LEN(atom_names)];
+  for (size_t i = 0; i < ARR_LEN(atom_names); ++i) {
+    atom_requests[i] = xcb_intern_atom_unchecked(
+        connection, 0, strlen(atom_names[i]), atom_names[i]);
+  }
 
-  const uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-  const uint32_t values[] = {screen->white_pixel, XCB_EVENT_MASK_KEY_PRESS};
+  xcb_intern_atom_reply_t *atom_replies[ARR_LEN(atom_names)];
+  for (size_t i = 0; i < ARR_LEN(atom_names); ++i) {
+    atom_replies[i] = xcb_intern_atom_reply(connection, atom_requests[i], NULL);
+  }
 
   /* Create the ball */
   int16_t ball_xspeed = 10;
   int16_t ball_yspeed = 10;
   int16_t ball_x = screen->width_in_pixels / 2 - 150 / 2;
   int16_t ball_y = screen->height_in_pixels / 2 - 150 / 2;
-  xcb_create_window(connection,                    /* connection */
-                    XCB_COPY_FROM_PARENT,          /* depth */
-                    window,                        /* window id */
-                    screen->root,                  /* parent window */
-                    ball_x, ball_y,                /* x, y */
-                    150, 150,                      /* width, height */
-                    0,                             /* border width */
-                    XCB_WINDOW_CLASS_INPUT_OUTPUT, /* class */
-                    screen->root_visual,           /* visual */
-                    mask, values                   /* masks */
-  );
+  xcb_window_t ball_window = window_create(
+      connection, screen, screen->white_pixel, ball_x, ball_y, 150, 150);
 
-  const xcb_intern_atom_cookie_t protocol_cookie =
-      xcb_intern_atom_unchecked(connection, 0, 12, "WM_PROTOCOLS");
-  const xcb_intern_atom_cookie_t delete_cookie =
-      xcb_intern_atom_unchecked(connection, 0, 16, "WM_DELETE_WINDOW");
-
-  xcb_intern_atom_reply_t *const protocol_reply =
-      xcb_intern_atom_reply(connection, protocol_cookie, NULL);
-  xcb_intern_atom_reply_t *const delete_reply =
-      xcb_intern_atom_reply(connection, delete_cookie, NULL);
-
-  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
-                      protocol_reply->atom, XCB_ATOM_ATOM, 32, 1,
-                      &delete_reply->atom);
-  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
-                      XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, 8, "XCB pong");
-
-  /* delete_reply is used for checking the client messages */
-  free(protocol_reply);
-
-  /* Create the paddles here */
+  /* Create the paddles */
   struct paddle left_paddle = paddle_create(connection, screen, 0, 0);
   struct paddle right_paddle =
       paddle_create(connection, screen, screen->width_in_pixels - 150, 0);
 
-  xcb_map_window(connection, window);
+  window_setup(connection, ball_window, atom_replies, "XCB pong");
+  window_setup(connection, left_paddle.window, atom_replies, "Left paddle");
+  window_setup(connection, right_paddle.window, atom_replies, "Right paddle");
+
+  /* atom_replies[DELETE_WINDOW_ATOM] is used for checking the client messages
+   */
+  free(atom_replies[PROTOCOL_ATOM]);
+  free(atom_replies[WINDOW_TYPE_ATOM]);
+  free(atom_replies[UTILITY_ATOM]);
+
+  xcb_map_window(connection, ball_window);
   xcb_map_window(connection, left_paddle.window);
   xcb_map_window(connection, right_paddle.window);
   xcb_flush(connection);
@@ -157,11 +213,11 @@ int main(void) {
 
       switch (event->response_type & ~0x80) {
       /*case XCB_EXPOSE:
-        xcb_poly_rectangle(connection, window, foreground, 1, &rectangle);
+        xcb_poly_rectangle(connection, ball_window, foreground, 1, &rectangle);
         xcb_flush(connection);*/
       case XCB_CLIENT_MESSAGE:
         if (((xcb_client_message_event_t *)event)->data.data32[0] ==
-            delete_reply->atom) {
+            atom_replies[DELETE_WINDOW_ATOM]->atom) {
           free(event);
           goto end;
         }
@@ -235,7 +291,7 @@ int main(void) {
     }
 
     const uint32_t coords[] = {ball_x, ball_y};
-    xcb_configure_window(connection, window,
+    xcb_configure_window(connection, ball_window,
                          XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
     xcb_flush(connection);
 
@@ -247,8 +303,8 @@ int main(void) {
   }
 
 end:
-  free(delete_reply);
-  xcb_destroy_window(connection, window);
+  free(atom_replies[DELETE_WINDOW_ATOM]);
+  xcb_destroy_window(connection, ball_window);
   xcb_destroy_window(connection, left_paddle.window);
   xcb_destroy_window(connection, right_paddle.window);
   xcb_disconnect(connection);
