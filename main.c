@@ -1,11 +1,13 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <X11/keysym.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <xcb/xcb.h>
+#include <xcb/xcb_keysyms.h>
 #include <xcb/xproto.h>
 
 #define ARR_LEN(arr) (sizeof arr / sizeof arr[0])
@@ -154,6 +156,13 @@ int main(void) {
     return EXIT_FAILURE;
   }
 
+  xcb_key_symbols_t *const key_syms = xcb_key_symbols_alloc(connection);
+  if (key_syms == NULL) {
+    xcb_disconnect(connection);
+    fputs("Can't get the keyboard map\n", stderr);
+    return EXIT_FAILURE;
+  }
+
   /*const xcb_gcontext_t foreground = xcb_generate_id(connection);
   uint32_t mask = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
   uint32_t values[2] = {screen->black_pixel, 0};
@@ -223,19 +232,21 @@ int main(void) {
         }
         break;
       case XCB_KEY_PRESS: {
-        xcb_key_press_event_t *kp = (xcb_key_press_event_t *)event;
-        switch (kp->detail) {
-          /* TODO: find these codes from a header file? */
-        case 25:
+        xcb_key_press_event_t *const kp = (xcb_key_press_event_t *)event;
+        /* TODO: is this guaranteed to return the correct symbol? */
+        switch (xcb_key_press_lookup_keysym(key_syms, kp, 0)) {
+        case XK_w:
+        case XK_W:
           left_paddle.speed -= 5;
           break;
-        case 39:
+        case XK_s:
+        case XK_S:
           left_paddle.speed += 5;
           break;
-        case 111:
+        case XK_Up:
           right_paddle.speed -= 5;
           break;
-        case 116:
+        case XK_Down:
           right_paddle.speed += 5;
           break;
         }
@@ -307,5 +318,6 @@ end:
   xcb_destroy_window(connection, ball_window);
   xcb_destroy_window(connection, left_paddle.window);
   xcb_destroy_window(connection, right_paddle.window);
+  xcb_key_symbols_free(key_syms);
   xcb_disconnect(connection);
 }
