@@ -280,7 +280,13 @@ int main(void) {
           right_paddle.speed += 5;
           break;
         }
-      }
+      } break;
+      case XCB_MAPPING_NOTIFY: {
+        xcb_mapping_notify_event_t *mn = (xcb_mapping_notify_event_t *)event;
+        if (mn->request == XCB_MAPPING_KEYBOARD) {
+          xcb_refresh_keyboard_mapping(key_syms, mn);
+        }
+      } break;
       default:
         break;
       }
