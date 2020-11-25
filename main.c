@@ -66,7 +66,6 @@ static xcb_window_t window_create(xcb_connection_t *connection,
   return window;
 }
 
-/* Compilers: please don't add padding between the elements */
 struct size_hints {
   uint32_t flags;
   uint32_t pad[4];
