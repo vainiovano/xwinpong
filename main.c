@@ -1,12 +1,13 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <X11/keysym.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <xcb/xcb.h>
+#include <xcb/xcb_event.h>
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xproto.h>
 
@@ -243,14 +244,17 @@ int main(void) {
     xcb_generic_event_t *event = NULL;
     while ((event = xcb_poll_for_event(connection)) != NULL) {
       if (event->response_type == 0) {
-        /* TODO: is this cast legal? */
-        fprintf(stderr, "Received X11 error %d\n",
-                ((xcb_generic_error_t *)event)->error_code);
+        xcb_generic_error_t *const err = (xcb_generic_error_t *)event;
+        fprintf(stderr,
+                "Received X11 error %" PRIu8 " (%s); request major code %" PRIu8
+                ", minor code %" PRIu16 "\n",
+                err->error_code, xcb_event_get_error_label(err->error_code),
+                err->major_code, err->minor_code);
         free(event);
         continue;
       }
 
-      switch (event->response_type & ~0x80) {
+      switch (XCB_EVENT_RESPONSE_TYPE(event)) {
       /*case XCB_EXPOSE:
         xcb_poly_rectangle(connection, ball_window, foreground, 1, &rectangle);
         xcb_flush(connection);*/

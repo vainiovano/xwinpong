@@ -1,7 +1,7 @@
 .POSIX:
 .SUFFIXES:
 SHELL	= /bin/sh
-LDLIBS	= -lxcb -lxcb-keysyms
+LDLIBS	= -lxcb -lxcb-keysyms -lxcb-util
 
 all: xcb_pong
 xcb_pong: main.o
