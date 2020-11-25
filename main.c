@@ -132,14 +132,43 @@ static void paddle_move(struct paddle *paddle, xcb_connection_t *connection,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
 }
 
-int main(void) {
-  int screen_num;
-  xcb_connection_t *const connection = xcb_connect(NULL, &screen_num);
+static int check_connection_error(xcb_connection_t *connection) {
   int error = xcb_connection_has_error(connection);
   if (error) {
     xcb_disconnect(connection);
-    fprintf(stderr, "Can't connect to an X server (error %d)\n",
-            error); /* TODO: print some nicer messages */
+    fputs("X11 connection has been invalidated: ", stderr);
+    switch (error) {
+    case XCB_CONN_ERROR:
+      fputs("connection error", stderr);
+      break;
+    case XCB_CONN_CLOSED_EXT_NOTSUPPORTED:
+      /* Shouldn't happen */
+      fputs("extension not supported", stderr);
+      break;
+    case XCB_CONN_CLOSED_MEM_INSUFFICIENT:
+      fputs("insufficient memory", stderr);
+      break;
+    case XCB_CONN_CLOSED_REQ_LEN_EXCEED:
+      fputs("too long request", stderr);
+      break;
+    case XCB_CONN_CLOSED_PARSE_ERR:
+      fputs("bad display string", stderr);
+      break;
+    case XCB_CONN_CLOSED_INVALID_SCREEN:
+      fputs("invalid screen", stderr);
+      break;
+    default:
+      fputs("unknown error", stderr);
+    }
+    fputc('\n', stderr);
+  }
+  return error;
+}
+
+int main(void) {
+  int screen_num;
+  xcb_connection_t *const connection = xcb_connect(NULL, &screen_num);
+  if (check_connection_error(connection)) {
     return EXIT_FAILURE;
   }
 
@@ -208,6 +237,7 @@ int main(void) {
   xcb_flush(connection);
 
   int lost = 0;
+  int exit_code = EXIT_SUCCESS;
 
   for (;;) {
     xcb_generic_event_t *event = NULL;
@@ -228,7 +258,7 @@ int main(void) {
         if (((xcb_client_message_event_t *)event)->data.data32[0] ==
             atom_replies[DELETE_WINDOW_ATOM]->atom) {
           free(event);
-          goto end;
+          goto disconnect;
         }
         break;
       case XCB_KEY_PRESS: {
@@ -255,6 +285,11 @@ int main(void) {
         break;
       }
       free(event);
+    }
+
+    if (check_connection_error(connection)) {
+      exit_code = EXIT_FAILURE;
+      goto free_and_exit;
     }
 
     paddle_move(&left_paddle, connection, screen);
@@ -295,10 +330,10 @@ int main(void) {
 
     if (ball_x < 0) {
       puts("Right wins!");
-      goto end;
+      goto disconnect;
     } else if (ball_x > screen->width_in_pixels - 150) {
       puts("Left wins!");
-      goto end;
+      goto disconnect;
     }
 
     const uint32_t coords[] = {ball_x, ball_y};
@@ -313,11 +348,15 @@ int main(void) {
     nanosleep(&wait_time, NULL);
   }
 
-end:
-  free(atom_replies[DELETE_WINDOW_ATOM]);
+disconnect:
   xcb_destroy_window(connection, ball_window);
   xcb_destroy_window(connection, left_paddle.window);
   xcb_destroy_window(connection, right_paddle.window);
-  xcb_key_symbols_free(key_syms);
   xcb_disconnect(connection);
+
+free_and_exit:
+  free(atom_replies[DELETE_WINDOW_ATOM]);
+  xcb_key_symbols_free(key_syms);
+
+  return exit_code;
 }
