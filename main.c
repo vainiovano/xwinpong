@@ -188,7 +188,7 @@ int main(void) {
   xcb_key_symbols_t *const key_syms = xcb_key_symbols_alloc(connection);
   if (key_syms == NULL) {
     xcb_disconnect(connection);
-    fputs("Can't get the keyboard map\n", stderr);
+    fputs("Can't allocate space for keyboard map information\n", stderr);
     return EXIT_FAILURE;
   }
 
