@@ -36,14 +36,14 @@ enum atom_type {
   PROTOCOL_ATOM,
   DELETE_WINDOW_ATOM,
   WINDOW_TYPE_ATOM,
-  UTILITY_ATOM
+  DIALOG_ATOM
 };
 
 static const char *const atom_names[] = {
     [PROTOCOL_ATOM] = "WM_PROTOCOLS",
     [DELETE_WINDOW_ATOM] = "WM_DELETE_WINDOW",
     [WINDOW_TYPE_ATOM] = "_NET_WM_WINDOW_TYPE",
-    [UTILITY_ATOM] = "_NET_WM_WINDOW_TYPE_UTILITY"};
+    [DIALOG_ATOM] = "_NET_WM_WINDOW_TYPE_DIALOG"};
 
 static xcb_window_t window_create(xcb_connection_t *connection,
                                   const xcb_screen_t *screen, uint32_t color,
@@ -89,10 +89,10 @@ static void window_setup(xcb_connection_t *connection, xcb_window_t window,
                         &atom_replies[DELETE_WINDOW_ATOM]->atom);
   }
   if (atom_replies[WINDOW_TYPE_ATOM] != NULL &&
-      atom_replies[UTILITY_ATOM] != NULL) {
+      atom_replies[DIALOG_ATOM] != NULL) {
     xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
                         atom_replies[WINDOW_TYPE_ATOM]->atom, XCB_ATOM_ATOM, 32,
-                        1, &atom_replies[UTILITY_ATOM]->atom);
+                        1, &atom_replies[DIALOG_ATOM]->atom);
   }
   xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
                       XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(window_name),
@@ -233,7 +233,7 @@ int main(void) {
    */
   free(atom_replies[PROTOCOL_ATOM]);
   free(atom_replies[WINDOW_TYPE_ATOM]);
-  free(atom_replies[UTILITY_ATOM]);
+  free(atom_replies[DIALOG_ATOM]);
 
   xcb_map_window(connection, ball_window);
   xcb_map_window(connection, left_paddle.window);
