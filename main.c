@@ -241,11 +241,13 @@ int main(void) {
   xcb_flush(connection);
 
   int lost = 0;
+  int paused = 0;
   int exit_code = EXIT_SUCCESS;
 
   for (;;) {
-    xcb_generic_event_t *event = NULL;
-    while ((event = xcb_poll_for_event(connection)) != NULL) {
+    xcb_generic_event_t *event;
+    while ((event = paused ? xcb_wait_for_event(connection)
+                           : xcb_poll_for_event(connection)) != NULL) {
       if (event->response_type == 0) {
         xcb_generic_error_t *const err = (xcb_generic_error_t *)event;
         fprintf(stderr,
@@ -270,22 +272,38 @@ int main(void) {
         break;
       case XCB_KEY_PRESS: {
         xcb_key_press_event_t *const kp = (xcb_key_press_event_t *)event;
-        /* TODO: is this guaranteed to return the correct symbol? */
-        switch (xcb_key_press_lookup_keysym(key_syms, kp, 0)) {
-        case XK_w:
-        case XK_W:
-          left_paddle.speed -= 5;
-          break;
-        case XK_s:
-        case XK_S:
-          left_paddle.speed += 5;
-          break;
-        case XK_Up:
-          right_paddle.speed -= 5;
-          break;
-        case XK_Down:
-          right_paddle.speed += 5;
-          break;
+        /* TODO: what does the last argument mean exactly? */
+        const xcb_keysym_t keysym =
+            xcb_key_press_lookup_keysym(key_syms, kp, 0);
+
+        if (paused) {
+          switch (keysym) {
+          case XK_p:
+          case XK_P:
+            paused = 0;
+            break;
+          }
+        } else {
+          switch (keysym) {
+          case XK_w:
+          case XK_W:
+            left_paddle.speed -= 5;
+            break;
+          case XK_s:
+          case XK_S:
+            left_paddle.speed += 5;
+            break;
+          case XK_Up:
+            right_paddle.speed -= 5;
+            break;
+          case XK_Down:
+            right_paddle.speed += 5;
+            break;
+          case XK_p:
+          case XK_P:
+            paused = 1;
+            break;
+          }
         }
       } break;
       case XCB_MAPPING_NOTIFY: {
