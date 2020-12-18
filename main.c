@@ -66,18 +66,6 @@ static xcb_window_t window_create(xcb_connection_t *connection,
   return window;
 }
 
-struct size_hints {
-  uint32_t flags;
-  uint32_t pad[4];
-  int32_t min_width, min_height;
-  int32_t max_width, max_height;
-  int32_t width_inc, height_inc;
-  int32_t min_aspect_num, min_aspect_den;
-  int32_t max_aspect_num, max_aspect_den;
-  int32_t base_width, base_height;
-  int32_t win_gravity;
-};
-
 /* Sets some ICCC and EWMH atoms for window managers */
 static void window_setup(xcb_connection_t *connection, xcb_window_t window,
                          xcb_intern_atom_reply_t *atom_replies[],
@@ -97,15 +85,6 @@ static void window_setup(xcb_connection_t *connection, xcb_window_t window,
   xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
                       XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(window_name),
                       window_name);
-  /* Program-specified position, size, min size and max size */
-  struct size_hints size_hints = {.flags = 4 | 8 | 16 | 32,
-                                  .min_width = 150,
-                                  .max_width = 150,
-                                  .min_height = 150,
-                                  .max_height = 150};
-  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
-                      XCB_ATOM_WM_NORMAL_HINTS, XCB_ATOM_WM_SIZE_HINTS, 32, 18,
-                      &size_hints);
 }
 
 struct paddle {
