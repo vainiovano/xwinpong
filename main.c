@@ -51,7 +51,8 @@ static xcb_window_t window_create(xcb_connection_t *connection,
                                   uint16_t height) {
   const xcb_window_t window = xcb_generate_id(connection);
   const uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-  const uint32_t values[] = {color, XCB_EVENT_MASK_KEY_PRESS};
+  const uint32_t values[] = {color, XCB_EVENT_MASK_KEY_PRESS |
+                                        XCB_EVENT_MASK_STRUCTURE_NOTIFY};
   xcb_create_window(connection,                    /* connection */
                     XCB_COPY_FROM_PARENT,          /* depth */
                     window,                        /* window id */
@@ -91,6 +92,8 @@ struct paddle {
   xcb_window_t window;
   int16_t x;
   int16_t y;
+  uint16_t width;
+  uint16_t height;
   int16_t speed;
 };
 
@@ -99,13 +102,14 @@ static struct paddle paddle_create(xcb_connection_t *connection,
                                    int16_t y) {
   const xcb_window_t window =
       window_create(connection, screen, screen->black_pixel, x, y, 150, 150);
-  return (struct paddle){window, x, y, 0};
+  return (struct paddle){window, x, y, 150, 150, 0};
 }
 
 static void paddle_move(struct paddle *paddle, xcb_connection_t *connection,
                         const xcb_screen_t *screen) {
   paddle->y += paddle->speed;
-  collide(&paddle->speed, &paddle->y, 0, screen->height_in_pixels - 150);
+  collide(&paddle->speed, &paddle->y, 0,
+          screen->height_in_pixels - paddle->height);
   const uint32_t coords[] = {paddle->x, paddle->y};
   xcb_configure_window(connection, paddle->window,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
@@ -291,6 +295,24 @@ int main(void) {
           xcb_refresh_keyboard_mapping(key_syms, mn);
         }
       } break;
+      case XCB_CONFIGURE_NOTIFY: {
+        /* Each window move generates this event. This game only cares about
+         * external resize events, but receiving only them is impossible. */
+        xcb_configure_notify_event_t *cn =
+            (xcb_configure_notify_event_t *)event;
+        struct paddle *resized_paddle = NULL;
+        if (cn->window == left_paddle.window) {
+          resized_paddle = &left_paddle;
+        } else if (cn->window == right_paddle.window) {
+          resized_paddle = &right_paddle;
+          /* TODO: use something better for resizing the right paddle */
+          resized_paddle->x = screen->width_in_pixels - cn->width;
+        }
+        if (resized_paddle != NULL) {
+          resized_paddle->width = cn->width;
+          resized_paddle->height = cn->height;
+        }
+      } break;
       default:
         break;
       }
@@ -308,27 +330,30 @@ int main(void) {
     ball_x += ball_xspeed;
     ball_y += ball_yspeed;
 
-    if (ball_x < left_paddle.x + 150) {
-      if (!lost && ball_y > left_paddle.y - 150 &&
-          ball_y < left_paddle.y + 150) {
-        collide(&ball_xspeed, &ball_x, left_paddle.x + 150, INT16_MAX);
+    if (ball_x < left_paddle.x + left_paddle.width) {
+      if (!lost && ball_y + 150 > left_paddle.y &&
+          ball_y < left_paddle.y + left_paddle.height) {
+        collide(&ball_xspeed, &ball_x, left_paddle.x + left_paddle.width,
+                INT16_MAX);
         /* Make the game advance faster */
         ball_xspeed += 1;
 
-        ball_yspeed += (ball_y - left_paddle.y) / 5;
+        ball_yspeed +=
+            ((ball_y + 75) - (left_paddle.y + left_paddle.height / 2)) / 5;
         ball_yspeed = clamp(ball_yspeed, -20, 20);
 
         lost = 0;
       } else {
         lost = 1;
       }
-    } else if (ball_x > right_paddle.x - 150) {
-      if (!lost && ball_y > right_paddle.y - 150 &&
-          ball_y < right_paddle.y + 150) {
+    } else if (ball_x + 150 > right_paddle.x) {
+      if (!lost && ball_y + 150 > right_paddle.y &&
+          ball_y < right_paddle.y + right_paddle.height) {
         collide(&ball_xspeed, &ball_x, INT16_MIN, right_paddle.x - 150);
         ball_xspeed -= 1;
 
-        ball_yspeed += (ball_y - right_paddle.y) / 5;
+        ball_yspeed +=
+            ((ball_y + 75) - (right_paddle.y + right_paddle.height / 2)) / 5;
         ball_yspeed = clamp(ball_yspeed, -20, 20);
 
         lost = 0;
