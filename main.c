@@ -253,6 +253,9 @@ int main(void) {
           goto disconnect;
         }
         break;
+      case XCB_DESTROY_NOTIFY:
+        free(event);
+        goto disconnect;
       case XCB_KEY_PRESS: {
         xcb_key_press_event_t *const kp = (xcb_key_press_event_t *)event;
         /* TODO: what does the last argument mean exactly? */
