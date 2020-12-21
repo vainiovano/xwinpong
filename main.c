@@ -106,13 +106,18 @@ static struct moving_window moving_window_create(xcb_connection_t *connection,
   return (struct moving_window){window, x, y, 150, 150, 0, 0};
 }
 
+/* Calculates collisions with the top and bottom edges of the screen. Doesn't
+ * send X11 events. */
 static void moving_window_move(struct moving_window *window,
-                               xcb_connection_t *connection,
                                const xcb_screen_t *screen) {
   window->x += window->xspeed;
   window->y += window->yspeed;
   collide(&window->yspeed, &window->y, 0,
           screen->height_in_pixels - window->height);
+}
+
+static void moving_window_server_push(struct moving_window *window,
+                                      xcb_connection_t *connection) {
   const uint32_t coords[] = {window->x, window->y};
   xcb_configure_window(connection, window->window,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
@@ -199,12 +204,12 @@ int main(void) {
   }
 
   /* Create the ball */
-  int16_t ball_xspeed = 10;
-  int16_t ball_yspeed = 10;
-  int16_t ball_x = screen->width_in_pixels / 2 - 150 / 2;
-  int16_t ball_y = screen->height_in_pixels / 2 - 150 / 2;
-  xcb_window_t ball_window = window_create(
-      connection, screen, screen->white_pixel, ball_x, ball_y, 150, 150);
+  int16_t ball_startx = screen->width_in_pixels / 2 - 150 / 2;
+  int16_t ball_starty = screen->height_in_pixels / 2 - 150 / 2;
+  struct moving_window ball =
+      moving_window_create(connection, screen, ball_startx, ball_starty);
+  ball.xspeed = 10;
+  ball.yspeed = 10;
 
   /* Create the paddles */
   struct moving_window left_paddle =
@@ -212,7 +217,7 @@ int main(void) {
   struct moving_window right_paddle = moving_window_create(
       connection, screen, screen->width_in_pixels - 150, 0);
 
-  window_setup(connection, ball_window, atom_replies, "XCB pong");
+  window_setup(connection, ball.window, atom_replies, "XCB pong");
   window_setup(connection, left_paddle.window, atom_replies, "Left paddle");
   window_setup(connection, right_paddle.window, atom_replies, "Right paddle");
 
@@ -222,7 +227,7 @@ int main(void) {
   free(atom_replies[WINDOW_TYPE_ATOM]);
   free(atom_replies[DIALOG_ATOM]);
 
-  xcb_map_window(connection, ball_window);
+  xcb_map_window(connection, ball.window);
   xcb_map_window(connection, left_paddle.window);
   xcb_map_window(connection, right_paddle.window);
   xcb_flush(connection);
@@ -248,7 +253,7 @@ int main(void) {
 
       switch (XCB_EVENT_RESPONSE_TYPE(event)) {
       /*case XCB_EXPOSE:
-        xcb_poly_rectangle(connection, ball_window, foreground, 1, &rectangle);
+        xcb_poly_rectangle(connection, ball.window, foreground, 1, &rectangle);
         xcb_flush(connection);*/
       case XCB_CLIENT_MESSAGE:
         if (((xcb_client_message_event_t *)event)->data.data32[0] ==
@@ -314,6 +319,8 @@ int main(void) {
           resized_window = &right_paddle;
           /* TODO: use something better for resizing the right paddle */
           resized_window->x = screen->width_in_pixels - cn->width;
+        } else if (cn->window == ball.window) {
+          resized_window = &ball;
         }
         if (resized_window != NULL) {
           resized_window->width = cn->width;
@@ -331,56 +338,55 @@ int main(void) {
       goto free_and_exit;
     }
 
-    moving_window_move(&left_paddle, connection, screen);
-    moving_window_move(&right_paddle, connection, screen);
+    moving_window_move(&left_paddle, screen);
+    moving_window_move(&right_paddle, screen);
+    moving_window_move(&ball, screen);
 
-    ball_x += ball_xspeed;
-    ball_y += ball_yspeed;
-
-    if (ball_x < left_paddle.x + left_paddle.width) {
-      if (!lost && ball_y + 150 > left_paddle.y &&
-          ball_y < left_paddle.y + left_paddle.height) {
-        collide(&ball_xspeed, &ball_x, left_paddle.x + left_paddle.width,
+    if (ball.x < left_paddle.x + left_paddle.width) {
+      if (!lost && ball.y + ball.width > left_paddle.y &&
+          ball.y < left_paddle.y + left_paddle.height) {
+        collide(&ball.xspeed, &ball.x, left_paddle.x + left_paddle.width,
                 INT16_MAX);
         /* Make the game advance faster */
-        ball_xspeed += 1;
+        ball.xspeed += 1;
 
-        ball_yspeed +=
-            ((ball_y + 75) - (left_paddle.y + left_paddle.height / 2)) / 5;
-        ball_yspeed = clamp(ball_yspeed, -20, 20);
+        ball.yspeed += ((ball.y + ball.height / 2) -
+                        (left_paddle.y + left_paddle.height / 2)) /
+                       5;
+        ball.yspeed = clamp(ball.yspeed, -20, 20);
 
         lost = 0;
       } else {
         lost = 1;
       }
-    } else if (ball_x + 150 > right_paddle.x) {
-      if (!lost && ball_y + 150 > right_paddle.y &&
-          ball_y < right_paddle.y + right_paddle.height) {
-        collide(&ball_xspeed, &ball_x, INT16_MIN, right_paddle.x - 150);
-        ball_xspeed -= 1;
+    } else if (ball.x + ball.width > right_paddle.x) {
+      if (!lost && ball.y + ball.height > right_paddle.y &&
+          ball.y < right_paddle.y + right_paddle.height) {
+        collide(&ball.xspeed, &ball.x, INT16_MIN, right_paddle.x - ball.width);
+        ball.xspeed -= 1;
 
-        ball_yspeed +=
-            ((ball_y + 75) - (right_paddle.y + right_paddle.height / 2)) / 5;
-        ball_yspeed = clamp(ball_yspeed, -20, 20);
+        ball.yspeed += ((ball.y + ball.height / 2) -
+                        (right_paddle.y + right_paddle.height / 2)) /
+                       5;
+        ball.yspeed = clamp(ball.yspeed, -20, 20);
 
         lost = 0;
       } else {
         lost = 1;
       }
     }
-    collide(&ball_yspeed, &ball_y, 0, screen->height_in_pixels - 150);
 
-    if (ball_x < 0) {
+    if (ball.x < 0) {
       puts("Right wins!");
       goto disconnect;
-    } else if (ball_x > screen->width_in_pixels - 150) {
+    } else if (ball.x > screen->width_in_pixels - 150) {
       puts("Left wins!");
       goto disconnect;
     }
 
-    const uint32_t coords[] = {ball_x, ball_y};
-    xcb_configure_window(connection, ball_window,
-                         XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
+    moving_window_server_push(&left_paddle, connection);
+    moving_window_server_push(&right_paddle, connection);
+    moving_window_server_push(&ball, connection);
     xcb_flush(connection);
 
     const struct timespec wait_time = {
@@ -391,7 +397,7 @@ int main(void) {
   }
 
 disconnect:
-  xcb_destroy_window(connection, ball_window);
+  xcb_destroy_window(connection, ball.window);
   xcb_destroy_window(connection, left_paddle.window);
   xcb_destroy_window(connection, right_paddle.window);
   xcb_disconnect(connection);
