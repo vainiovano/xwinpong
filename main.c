@@ -88,30 +88,33 @@ static void window_setup(xcb_connection_t *connection, xcb_window_t window,
                       window_name);
 }
 
-struct paddle {
+struct moving_window {
   xcb_window_t window;
   int16_t x;
   int16_t y;
   uint16_t width;
   uint16_t height;
-  int16_t speed;
+  int16_t xspeed;
+  int16_t yspeed;
 };
 
-static struct paddle paddle_create(xcb_connection_t *connection,
-                                   const xcb_screen_t *screen, int16_t x,
-                                   int16_t y) {
+static struct moving_window moving_window_create(xcb_connection_t *connection,
+                                                 const xcb_screen_t *screen,
+                                                 int16_t x, int16_t y) {
   const xcb_window_t window =
       window_create(connection, screen, screen->black_pixel, x, y, 150, 150);
-  return (struct paddle){window, x, y, 150, 150, 0};
+  return (struct moving_window){window, x, y, 150, 150, 0, 0};
 }
 
-static void paddle_move(struct paddle *paddle, xcb_connection_t *connection,
-                        const xcb_screen_t *screen) {
-  paddle->y += paddle->speed;
-  collide(&paddle->speed, &paddle->y, 0,
-          screen->height_in_pixels - paddle->height);
-  const uint32_t coords[] = {paddle->x, paddle->y};
-  xcb_configure_window(connection, paddle->window,
+static void moving_window_move(struct moving_window *window,
+                               xcb_connection_t *connection,
+                               const xcb_screen_t *screen) {
+  window->x += window->xspeed;
+  window->y += window->yspeed;
+  collide(&window->yspeed, &window->y, 0,
+          screen->height_in_pixels - window->height);
+  const uint32_t coords[] = {window->x, window->y};
+  xcb_configure_window(connection, window->window,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
 }
 
@@ -204,9 +207,10 @@ int main(void) {
       connection, screen, screen->white_pixel, ball_x, ball_y, 150, 150);
 
   /* Create the paddles */
-  struct paddle left_paddle = paddle_create(connection, screen, 0, 0);
-  struct paddle right_paddle =
-      paddle_create(connection, screen, screen->width_in_pixels - 150, 0);
+  struct moving_window left_paddle =
+      moving_window_create(connection, screen, 0, 0);
+  struct moving_window right_paddle = moving_window_create(
+      connection, screen, screen->width_in_pixels - 150, 0);
 
   window_setup(connection, ball_window, atom_replies, "XCB pong");
   window_setup(connection, left_paddle.window, atom_replies, "Left paddle");
@@ -273,17 +277,17 @@ int main(void) {
           switch (keysym) {
           case XK_w:
           case XK_W:
-            left_paddle.speed -= 5;
+            left_paddle.yspeed -= 5;
             break;
           case XK_s:
           case XK_S:
-            left_paddle.speed += 5;
+            left_paddle.yspeed += 5;
             break;
           case XK_Up:
-            right_paddle.speed -= 5;
+            right_paddle.yspeed -= 5;
             break;
           case XK_Down:
-            right_paddle.speed += 5;
+            right_paddle.yspeed += 5;
             break;
           case XK_p:
           case XK_P:
@@ -303,17 +307,17 @@ int main(void) {
          * external resize events, but receiving only them is impossible. */
         xcb_configure_notify_event_t *cn =
             (xcb_configure_notify_event_t *)event;
-        struct paddle *resized_paddle = NULL;
+        struct moving_window *resized_window = NULL;
         if (cn->window == left_paddle.window) {
-          resized_paddle = &left_paddle;
+          resized_window = &left_paddle;
         } else if (cn->window == right_paddle.window) {
-          resized_paddle = &right_paddle;
+          resized_window = &right_paddle;
           /* TODO: use something better for resizing the right paddle */
-          resized_paddle->x = screen->width_in_pixels - cn->width;
+          resized_window->x = screen->width_in_pixels - cn->width;
         }
-        if (resized_paddle != NULL) {
-          resized_paddle->width = cn->width;
-          resized_paddle->height = cn->height;
+        if (resized_window != NULL) {
+          resized_window->width = cn->width;
+          resized_window->height = cn->height;
         }
       } break;
       default:
@@ -327,8 +331,8 @@ int main(void) {
       goto free_and_exit;
     }
 
-    paddle_move(&left_paddle, connection, screen);
-    paddle_move(&right_paddle, connection, screen);
+    moving_window_move(&left_paddle, connection, screen);
+    moving_window_move(&right_paddle, connection, screen);
 
     ball_x += ball_xspeed;
     ball_y += ball_yspeed;
