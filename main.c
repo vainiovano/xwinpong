@@ -116,7 +116,7 @@ static void moving_window_move(struct moving_window *window,
           screen->height_in_pixels - window->height);
 }
 
-static void moving_window_send_position(struct moving_window *window,
+static void moving_window_send_position(const struct moving_window *window,
                                         xcb_connection_t *connection) {
   const uint32_t coords[] = {window->x, window->y};
   xcb_configure_window(connection, window->window,
