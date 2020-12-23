@@ -194,7 +194,6 @@ int main(void) {
   xcb_intern_atom_reply_t *atom_replies[ARR_LEN(atom_names)];
   for (size_t i = 0; i < ARR_LEN(atom_names); ++i) {
     atom_replies[i] = xcb_intern_atom_reply(connection, atom_requests[i], NULL);
-    /* TODO: can xcb_intern_atom_reply return NULL? */
     if (atom_replies[i] != NULL && atom_replies[i]->atom == XCB_ATOM_NONE) {
       free(atom_replies[i]);
       atom_replies[i] = NULL;
