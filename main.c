@@ -343,6 +343,7 @@ int main(void) {
     moving_window_move(&right_paddle, screen);
     moving_window_move(&ball, screen);
 
+    /* TODO: try to deduplicate this code or make it more beautiful */
     if (ball.x < left_paddle.x + left_paddle.width) {
       if (!lost && ball.y + ball.width > left_paddle.y &&
           ball.y < left_paddle.y + left_paddle.height) {
