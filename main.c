@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include <xcb/xcb.h>
+#include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xproto.h>
@@ -163,16 +164,12 @@ int main(void) {
     return EXIT_FAILURE;
   }
 
-  xcb_screen_iterator_t iter =
-      xcb_setup_roots_iterator(xcb_get_setup(connection));
-  for (int i = 0; i < screen_num; ++i) {
-    xcb_screen_next(&iter);
-  }
-
-  const xcb_screen_t *const screen = iter.data;
+  const xcb_screen_t *const screen = xcb_aux_get_screen(connection, screen_num);
   /* TODO: can this happen? */
   if (screen == NULL) {
-    fputs("Can't get the current screen\n", stderr);
+    xcb_disconnect(connection);
+    fprintf(stderr, "Failed to get the requested screen (screen number %d)\n",
+            screen_num);
     return EXIT_FAILURE;
   }
 
