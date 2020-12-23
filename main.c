@@ -101,9 +101,10 @@ struct moving_window {
 
 static struct moving_window moving_window_create(xcb_connection_t *connection,
                                                  const xcb_screen_t *screen,
-                                                 int16_t x, int16_t y) {
+                                                 uint32_t color, int16_t x,
+                                                 int16_t y) {
   const xcb_window_t window =
-      window_create(connection, screen, screen->black_pixel, x, y, 150, 150);
+      window_create(connection, screen, color, x, y, 150, 150);
   return (struct moving_window){window, x, y, 150, 150, 0, 0};
 }
 
@@ -203,16 +204,17 @@ int main(void) {
   /* Create the ball */
   int16_t ball_startx = screen->width_in_pixels / 2 - 150 / 2;
   int16_t ball_starty = screen->height_in_pixels / 2 - 150 / 2;
-  struct moving_window ball =
-      moving_window_create(connection, screen, ball_startx, ball_starty);
+  struct moving_window ball = moving_window_create(
+      connection, screen, screen->white_pixel, ball_startx, ball_starty);
   ball.xspeed = 10;
   ball.yspeed = 10;
 
   /* Create the paddles */
   struct moving_window left_paddle =
-      moving_window_create(connection, screen, 0, 0);
-  struct moving_window right_paddle = moving_window_create(
-      connection, screen, screen->width_in_pixels - 150, 0);
+      moving_window_create(connection, screen, screen->black_pixel, 0, 0);
+  struct moving_window right_paddle =
+      moving_window_create(connection, screen, screen->black_pixel,
+                           screen->width_in_pixels - 150, 0);
 
   window_setup(connection, ball.window, atom_replies, "XCB pong");
   window_setup(connection, left_paddle.window, atom_replies, "Left paddle");
