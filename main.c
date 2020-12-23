@@ -371,6 +371,8 @@ int main(void) {
       } else {
         lost = 1;
       }
+    } else {
+      lost = 0;
     }
 
     if (ball.x < 0) {
