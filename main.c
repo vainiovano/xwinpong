@@ -67,7 +67,7 @@ static xcb_window_t window_create(xcb_connection_t *connection,
   return window;
 }
 
-/* Sets some ICCC and EWMH atoms for window managers */
+/* Sets some ICCCM and EWMH atoms for window managers */
 static void window_setup(xcb_connection_t *connection, xcb_window_t window,
                          xcb_intern_atom_reply_t *atom_replies[],
                          const char *window_name) {
