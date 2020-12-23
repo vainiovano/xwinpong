@@ -355,8 +355,6 @@ int main(void) {
                         (left_paddle.y + left_paddle.height / 2)) /
                        5;
         ball.yspeed = clamp(ball.yspeed, -20, 20);
-
-        lost = 0;
       } else {
         lost = 1;
       }
@@ -370,8 +368,6 @@ int main(void) {
                         (right_paddle.y + right_paddle.height / 2)) /
                        5;
         ball.yspeed = clamp(ball.yspeed, -20, 20);
-
-        lost = 0;
       } else {
         lost = 1;
       }
