@@ -116,8 +116,8 @@ static void moving_window_move(struct moving_window *window,
           screen->height_in_pixels - window->height);
 }
 
-static void moving_window_server_push(struct moving_window *window,
-                                      xcb_connection_t *connection) {
+static void moving_window_send_position(struct moving_window *window,
+                                        xcb_connection_t *connection) {
   const uint32_t coords[] = {window->x, window->y};
   xcb_configure_window(connection, window->window,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
@@ -384,9 +384,9 @@ int main(void) {
       goto disconnect;
     }
 
-    moving_window_server_push(&left_paddle, connection);
-    moving_window_server_push(&right_paddle, connection);
-    moving_window_server_push(&ball, connection);
+    moving_window_send_position(&left_paddle, connection);
+    moving_window_send_position(&right_paddle, connection);
+    moving_window_send_position(&ball, connection);
     xcb_flush(connection);
 
     const struct timespec wait_time = {
