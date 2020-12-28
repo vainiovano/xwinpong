@@ -125,6 +125,125 @@ static void moving_window_send_position(const struct moving_window *window,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
 }
 
+enum game_window { LEFT_PADDLE, BALL, RIGHT_PADDLE };
+
+static const char *const window_color_options[] = {
+    [LEFT_PADDLE] = "-lc", [BALL] = "-bc", [RIGHT_PADDLE] = "-rc"};
+
+static char *requested_window_colors[ARR_LEN(window_color_options)];
+static uint32_t window_colors[ARR_LEN(window_color_options)];
+
+static void default_window_colors(const xcb_screen_t *screen) {
+  window_colors[LEFT_PADDLE] = window_colors[RIGHT_PADDLE] =
+      screen->black_pixel;
+  window_colors[BALL] = screen->white_pixel;
+}
+
+enum color_type { COLOR, NAMED_COLOR };
+
+/* xcb_alloc_color_cookie_t and xcb_alloc_named_color_cookie_t are basically the
+ * same type. They are structs that only contain the sequence number of the
+ * request. */
+union color_request_union {
+  xcb_alloc_color_cookie_t color_cookie;
+  xcb_alloc_named_color_cookie_t named_color_cookie;
+};
+
+struct color_request {
+  enum color_type type;
+  union color_request_union cookie;
+};
+
+union color_reply_union {
+  xcb_alloc_color_reply_t color_reply;
+  xcb_alloc_named_color_reply_t named_color_reply;
+};
+
+struct color_reply {
+  enum color_type type;
+  union color_reply_union reply;
+};
+
+/* color_name isn't const because older versions of xcb-util are missing const
+ * in xcb_aux_parse_color's declaration */
+static struct color_request request_color(xcb_connection_t *connection,
+                                          xcb_colormap_t colormap,
+                                          size_t color_name_len,
+                                          char *color_name) {
+  uint16_t r, g, b;
+  struct color_request request;
+  if (xcb_aux_parse_color(color_name, &r, &g, &b)) {
+    request.type = COLOR;
+    request.cookie.color_cookie =
+        xcb_alloc_color(connection, colormap, r, g, b);
+  } else {
+    request.type = NAMED_COLOR;
+    request.cookie.named_color_cookie =
+        xcb_alloc_named_color(connection, colormap, color_name_len, color_name);
+  }
+  return request;
+}
+
+static uint32_t read_color_reply(xcb_connection_t *connection,
+                                 struct color_request request,
+                                 xcb_generic_error_t **error) {
+  uint32_t pixel;
+  switch (request.type) {
+  case COLOR: {
+    xcb_alloc_color_reply_t *color_reply =
+        xcb_alloc_color_reply(connection, request.cookie.color_cookie, error);
+    if (color_reply == NULL) {
+      /* The return value shouldn't be used if the error is set */
+      return 0;
+    }
+    pixel = color_reply->pixel;
+    free(color_reply);
+    break;
+  }
+  case NAMED_COLOR: {
+    xcb_alloc_named_color_reply_t *color_reply = xcb_alloc_named_color_reply(
+        connection, request.cookie.named_color_cookie, error);
+    if (color_reply == NULL) {
+      return 0;
+    }
+    pixel = color_reply->pixel;
+    free(color_reply);
+    break;
+  }
+  }
+  return pixel;
+}
+
+static void usage(const char *command_name) {
+  fprintf(stderr,
+          "usage: %s\n"
+          "\t[-lc {color}]\n"
+          "\t[-bc {color}]\n"
+          "\t[-rc {color}]\n",
+          command_name);
+}
+
+static int parse_options(int argc, char *argv[]) {
+  int return_code = 0;
+  for (int i = 1; i < argc; ++i) {
+    for (size_t j = 0; j < ARR_LEN(window_color_options); ++j) {
+      if (strcmp(argv[i], window_color_options[j]) == 0) {
+        if (i == argc - 1) {
+          fputs("missing argument from the last option\n", stderr);
+          return_code = 1;
+        } else {
+          requested_window_colors[j] = argv[++i];
+        }
+        goto next_arg;
+      }
+    }
+    fprintf(stderr, "unknown option: %s\n", argv[i]);
+    return_code = 1;
+  next_arg:;
+  }
+  return return_code;
+}
+
 static int check_connection_error(xcb_connection_t *connection) {
   int error = xcb_connection_has_error(connection);
   if (error) {
@@ -158,7 +277,12 @@ static int check_connection_error(xcb_connection_t *connection) {
   return error;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
+  if (parse_options(argc, argv)) {
+    usage(argv[0]);
+    return EXIT_FAILURE;
+  };
+
   int screen_num;
   xcb_connection_t *const connection = xcb_connect(NULL, &screen_num);
   if (check_connection_error(connection)) {
@@ -186,10 +310,41 @@ int main(void) {
   uint32_t values[2] = {screen->black_pixel, 0};
   xcb_create_gc(connection, foreground, screen->root, mask, values);*/
 
+  default_window_colors(screen);
+
+  struct color_request color_requests[ARR_LEN(window_color_options)];
+  for (size_t i = 0; i < ARR_LEN(window_color_options); ++i) {
+    if (requested_window_colors[i] == NULL) {
+      continue;
+    }
+    /* Just use the screen's default colormap. This game could use a custom
+     * colormap, but I expect people to run this game on modern enough hardware.
+     */
+    color_requests[i] = request_color(connection, screen->default_colormap,
+                                      strlen(requested_window_colors[i]),
+                                      requested_window_colors[i]);
+  }
+
   xcb_intern_atom_cookie_t atom_requests[ARR_LEN(atom_names)];
   for (size_t i = 0; i < ARR_LEN(atom_names); ++i) {
     atom_requests[i] = xcb_intern_atom_unchecked(
         connection, 1, strlen(atom_names[i]), atom_names[i]);
+  }
+
+  for (size_t i = 0; i < ARR_LEN(window_color_options); ++i) {
+    if (requested_window_colors[i] == NULL) {
+      continue;
+    }
+    xcb_generic_error_t *error = NULL;
+    uint32_t pixel = read_color_reply(connection, color_requests[i], &error);
+    if (error != NULL) {
+      fprintf(stderr, "Failed to get color \"%s\": %s; using default color\n",
+              requested_window_colors[i],
+              xcb_event_get_error_label(error->error_code));
+      free(error);
+    } else {
+      window_colors[i] = pixel;
+    }
   }
 
   xcb_intern_atom_reply_t *atom_replies[ARR_LEN(atom_names)];
@@ -205,15 +360,15 @@ int main(void) {
   int16_t ball_startx = screen->width_in_pixels / 2 - 150 / 2;
   int16_t ball_starty = screen->height_in_pixels / 2 - 150 / 2;
   struct moving_window ball = moving_window_create(
-      connection, screen, screen->white_pixel, ball_startx, ball_starty);
+      connection, screen, window_colors[BALL], ball_startx, ball_starty);
   ball.xspeed = 10;
   ball.yspeed = 10;
 
   /* Create the paddles */
-  struct moving_window left_paddle =
-      moving_window_create(connection, screen, screen->black_pixel, 0, 0);
+  struct moving_window left_paddle = moving_window_create(
+      connection, screen, window_colors[LEFT_PADDLE], 0, 0);
   struct moving_window right_paddle =
-      moving_window_create(connection, screen, screen->black_pixel,
+      moving_window_create(connection, screen, window_colors[RIGHT_PADDLE],
                            screen->width_in_pixels - 150, 0);
 
   window_setup(connection, ball.window, atom_replies, "XCB pong");
