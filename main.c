@@ -305,11 +305,6 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  /*const xcb_gcontext_t foreground = xcb_generate_id(connection);
-  uint32_t mask = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
-  uint32_t values[2] = {screen->black_pixel, 0};
-  xcb_create_gc(connection, foreground, screen->root, mask, values);*/
-
   default_window_colors(screen);
 
   struct color_request color_requests[ARR_LEN(window_color_options)];
@@ -406,9 +401,6 @@ int main(int argc, char *argv[]) {
       }
 
       switch (XCB_EVENT_RESPONSE_TYPE(event)) {
-      /*case XCB_EXPOSE:
-        xcb_poly_rectangle(connection, ball.window, foreground, 1, &rectangle);
-        xcb_flush(connection);*/
       case XCB_CLIENT_MESSAGE:
         if (((xcb_client_message_event_t *)event)->data.data32[0] ==
             atom_replies[DELETE_WINDOW_ATOM]->atom) {
