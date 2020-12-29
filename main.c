@@ -454,23 +454,24 @@ int main(int argc, char *argv[]) {
         }
       } break;
       case XCB_CONFIGURE_NOTIFY: {
-        /* Each window move generates this event. This game only cares about
-         * external resize events, but receiving only them is impossible. */
+        /* The game must receive this event if it wants to handle DestroyNotify
+         * events. ResizeRedirect could probably be used to reduce useless X11
+         * traffic, but I want to handle DestroyNotify properly. */
         xcb_configure_notify_event_t *cn =
             (xcb_configure_notify_event_t *)event;
-        struct moving_window *resized_window = NULL;
+        struct moving_window *changed_window = NULL;
         if (cn->window == left_paddle.window) {
-          resized_window = &left_paddle;
+          changed_window = &left_paddle;
         } else if (cn->window == right_paddle.window) {
-          resized_window = &right_paddle;
+          changed_window = &right_paddle;
           /* TODO: use something better for resizing the right paddle */
-          resized_window->x = screen->width_in_pixels - cn->width;
+          changed_window->x = screen->width_in_pixels - cn->width;
         } else if (cn->window == ball.window) {
-          resized_window = &ball;
+          changed_window = &ball;
         }
-        if (resized_window != NULL) {
-          resized_window->width = cn->width;
-          resized_window->height = cn->height;
+        if (changed_window != NULL) {
+          changed_window->width = cn->width;
+          changed_window->height = cn->height;
         }
       } break;
       default:
