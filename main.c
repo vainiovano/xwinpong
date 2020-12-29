@@ -247,7 +247,6 @@ static int parse_options(int argc, char *argv[]) {
 static int check_connection_error(xcb_connection_t *connection) {
   int error = xcb_connection_has_error(connection);
   if (error) {
-    xcb_disconnect(connection);
     fputs("X11 connection has been invalidated: ", stderr);
     switch (error) {
     case XCB_CONN_ERROR:
@@ -405,12 +404,12 @@ int main(int argc, char *argv[]) {
         if (((xcb_client_message_event_t *)event)->data.data32[0] ==
             atom_replies[DELETE_WINDOW_ATOM]->atom) {
           free(event);
-          goto disconnect;
+          goto end;
         }
         break;
       case XCB_DESTROY_NOTIFY:
         free(event);
-        goto disconnect;
+        goto end;
       case XCB_KEY_PRESS: {
         xcb_key_press_event_t *const kp = (xcb_key_press_event_t *)event;
         /* TODO: what does the last argument mean exactly? */
@@ -482,7 +481,7 @@ int main(int argc, char *argv[]) {
 
     if (check_connection_error(connection)) {
       exit_code = EXIT_FAILURE;
-      goto free_and_exit;
+      goto end;
     }
 
     moving_window_move(&left_paddle, screen);
@@ -524,10 +523,10 @@ int main(int argc, char *argv[]) {
 
     if (ball.x < 0) {
       puts("Right wins!");
-      goto disconnect;
+      goto end;
     } else if (ball.x > screen->width_in_pixels - 150) {
       puts("Left wins!");
-      goto disconnect;
+      goto end;
     }
 
     moving_window_send_position(&left_paddle, connection);
@@ -542,13 +541,9 @@ int main(int argc, char *argv[]) {
     nanosleep(&wait_time, NULL);
   }
 
-disconnect:
-  xcb_destroy_window(connection, ball.window);
-  xcb_destroy_window(connection, left_paddle.window);
-  xcb_destroy_window(connection, right_paddle.window);
+end:
   xcb_disconnect(connection);
 
-free_and_exit:
   free(atom_replies[DELETE_WINDOW_ATOM]);
   xcb_key_symbols_free(key_syms);
 
