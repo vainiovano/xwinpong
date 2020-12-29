@@ -298,13 +298,6 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  xcb_key_symbols_t *const key_syms = xcb_key_symbols_alloc(connection);
-  if (key_syms == NULL) {
-    xcb_disconnect(connection);
-    fputs("Can't allocate space for keyboard map information\n", stderr);
-    return EXIT_FAILURE;
-  }
-
   default_window_colors(screen);
 
   struct color_request color_requests[ARR_LEN(window_color_options)];
@@ -324,6 +317,13 @@ int main(int argc, char *argv[]) {
   for (size_t i = 0; i < ARR_LEN(atom_names); ++i) {
     atom_requests[i] = xcb_intern_atom_unchecked(
         connection, 1, strlen(atom_names[i]), atom_names[i]);
+  }
+
+  xcb_key_symbols_t *const key_syms = xcb_key_symbols_alloc(connection);
+  if (key_syms == NULL) {
+    xcb_disconnect(connection);
+    fputs("Can't allocate space for keyboard map information\n", stderr);
+    return EXIT_FAILURE;
   }
 
   for (size_t i = 0; i < ARR_LEN(window_color_options); ++i) {
