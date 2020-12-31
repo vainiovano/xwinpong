@@ -70,19 +70,18 @@ static xcb_window_t window_create(xcb_connection_t *connection,
 
 /* Sets some ICCCM and EWMH atoms for window managers */
 static void window_setup(xcb_connection_t *connection, xcb_window_t window,
-                         xcb_intern_atom_reply_t *atom_replies[],
-                         const char *window_name) {
-  if (atom_replies[PROTOCOL_ATOM] != NULL &&
-      atom_replies[DELETE_WINDOW_ATOM] != NULL) {
+                         xcb_atom_t atoms[], const char *window_name) {
+  if (atoms[PROTOCOL_ATOM] != XCB_ATOM_NONE &&
+      atoms[DELETE_WINDOW_ATOM] != XCB_ATOM_NONE) {
     xcb_change_property(connection, XCB_PROP_MODE_APPEND, window,
-                        atom_replies[PROTOCOL_ATOM]->atom, XCB_ATOM_ATOM, 32, 1,
-                        &atom_replies[DELETE_WINDOW_ATOM]->atom);
+                        atoms[PROTOCOL_ATOM], XCB_ATOM_ATOM, 32, 1,
+                        &atoms[DELETE_WINDOW_ATOM]);
   }
-  if (atom_replies[WINDOW_TYPE_ATOM] != NULL &&
-      atom_replies[DIALOG_ATOM] != NULL) {
+  if (atoms[WINDOW_TYPE_ATOM] != XCB_ATOM_NONE &&
+      atoms[DIALOG_ATOM] != XCB_ATOM_NONE) {
     xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
-                        atom_replies[WINDOW_TYPE_ATOM]->atom, XCB_ATOM_ATOM, 32,
-                        1, &atom_replies[DIALOG_ATOM]->atom);
+                        atoms[WINDOW_TYPE_ATOM], XCB_ATOM_ATOM, 32, 1,
+                        &atoms[DIALOG_ATOM]);
   }
   xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
                       XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(window_name),
@@ -341,13 +340,12 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  xcb_intern_atom_reply_t *atom_replies[ARR_LEN(atom_names)];
+  xcb_atom_t atoms[ARR_LEN(atom_names)];
   for (size_t i = 0; i < ARR_LEN(atom_names); ++i) {
-    atom_replies[i] = xcb_intern_atom_reply(connection, atom_requests[i], NULL);
-    if (atom_replies[i] != NULL && atom_replies[i]->atom == XCB_ATOM_NONE) {
-      free(atom_replies[i]);
-      atom_replies[i] = NULL;
-    }
+    xcb_intern_atom_reply_t *atom_reply =
+        xcb_intern_atom_reply(connection, atom_requests[i], NULL);
+    atoms[i] = atom_reply == NULL ? XCB_ATOM_NONE : atom_reply->atom;
+    free(atom_reply);
   }
 
   /* Create the ball */
@@ -365,15 +363,9 @@ int main(int argc, char *argv[]) {
       moving_window_create(connection, screen, window_colors[RIGHT_PADDLE],
                            screen->width_in_pixels - 150, 0);
 
-  window_setup(connection, ball.window, atom_replies, "XCB pong");
-  window_setup(connection, left_paddle.window, atom_replies, "Left paddle");
-  window_setup(connection, right_paddle.window, atom_replies, "Right paddle");
-
-  /* atom_replies[DELETE_WINDOW_ATOM] is used for checking the client messages
-   */
-  free(atom_replies[PROTOCOL_ATOM]);
-  free(atom_replies[WINDOW_TYPE_ATOM]);
-  free(atom_replies[DIALOG_ATOM]);
+  window_setup(connection, ball.window, atoms, "XCB pong");
+  window_setup(connection, left_paddle.window, atoms, "Left paddle");
+  window_setup(connection, right_paddle.window, atoms, "Right paddle");
 
   xcb_map_window(connection, ball.window);
   xcb_map_window(connection, left_paddle.window);
@@ -402,7 +394,7 @@ int main(int argc, char *argv[]) {
       switch (XCB_EVENT_RESPONSE_TYPE(event)) {
       case XCB_CLIENT_MESSAGE:
         if (((xcb_client_message_event_t *)event)->data.data32[0] ==
-            atom_replies[DELETE_WINDOW_ATOM]->atom) {
+            atoms[DELETE_WINDOW_ATOM]) {
           free(event);
           goto end;
         }
@@ -543,9 +535,6 @@ int main(int argc, char *argv[]) {
 
 end:
   xcb_disconnect(connection);
-
-  free(atom_replies[DELETE_WINDOW_ATOM]);
   xcb_key_symbols_free(key_syms);
-
   return exit_code;
 }
