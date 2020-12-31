@@ -516,7 +516,7 @@ int main(int argc, char *argv[]) {
     if (ball.x < 0) {
       puts("Right wins!");
       goto end;
-    } else if (ball.x > screen->width_in_pixels - 150) {
+    } else if (ball.x > screen->width_in_pixels - ball.width) {
       puts("Left wins!");
       goto end;
     }
