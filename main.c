@@ -484,7 +484,7 @@ int main(int argc, char *argv[]) {
 
     /* TODO: try to deduplicate this code or make it more beautiful */
     if (ball.x < left_paddle.x + left_paddle.width) {
-      if (!lost && ball.y + ball.width > left_paddle.y &&
+      if (!lost && ball.y + ball.height > left_paddle.y &&
           ball.y < left_paddle.y + left_paddle.height) {
         collide(&ball.xspeed, &ball.x, left_paddle.x + left_paddle.width,
                 INT16_MAX);
