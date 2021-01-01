@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -373,8 +374,8 @@ int main(int argc, char *argv[]) {
   xcb_map_window(connection, right_paddle.window);
   xcb_flush(connection);
 
-  int lost = 0;
-  int paused = 0;
+  bool lost = false;
+  bool paused = false;
   int exit_code = EXIT_SUCCESS;
 
   for (;;) {
@@ -413,7 +414,7 @@ int main(int argc, char *argv[]) {
           switch (keysym) {
           case XK_p:
           case XK_P:
-            paused = 0;
+            paused = false;
             break;
           }
         } else {
@@ -434,7 +435,7 @@ int main(int argc, char *argv[]) {
             break;
           case XK_p:
           case XK_P:
-            paused = 1;
+            paused = true;
             break;
           }
         }
@@ -495,7 +496,7 @@ int main(int argc, char *argv[]) {
                        5;
         ball.yspeed = clamp(ball.yspeed, -20, 20);
       } else {
-        lost = 1;
+        lost = true;
       }
     } else if (ball.x + ball.width > right_paddle.x) {
       if (!lost && ball.y + ball.height > right_paddle.y &&
@@ -508,10 +509,10 @@ int main(int argc, char *argv[]) {
                        5;
         ball.yspeed = clamp(ball.yspeed, -20, 20);
       } else {
-        lost = 1;
+        lost = true;
       }
     } else {
-      lost = 0;
+      lost = false;
     }
 
     if (ball.x < 0) {
