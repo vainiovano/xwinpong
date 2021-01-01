@@ -1,11 +1,12 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include <X11/keysym.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include <X11/keysym.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_event.h>
