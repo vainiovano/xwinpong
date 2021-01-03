@@ -50,12 +50,14 @@ static const char *const atom_names[] = {
 
 static xcb_window_t window_create(xcb_connection_t *connection,
                                   const xcb_screen_t *screen, uint32_t color,
-                                  int16_t x, int16_t y, uint16_t width,
-                                  uint16_t height) {
+                                  bool override_redirect, int16_t x, int16_t y,
+                                  uint16_t width, uint16_t height) {
   const xcb_window_t window = xcb_generate_id(connection);
-  const uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-  const uint32_t values[] = {color, XCB_EVENT_MASK_KEY_PRESS |
-                                        XCB_EVENT_MASK_STRUCTURE_NOTIFY};
+  const uint32_t mask =
+      XCB_CW_BACK_PIXEL | XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
+  const uint32_t values[] = {color, override_redirect,
+                             XCB_EVENT_MASK_KEY_PRESS |
+                                 XCB_EVENT_MASK_STRUCTURE_NOTIFY};
   xcb_create_window(connection,                    /* connection */
                     XCB_COPY_FROM_PARENT,          /* depth */
                     window,                        /* window id */
@@ -90,8 +92,11 @@ static void window_setup(xcb_connection_t *connection, xcb_window_t window,
                       window_name);
 }
 
+/* One of the windows has override-redirect set and the other doesn't. window is
+ * the mapped window and other_window is the unmapped one. */
 struct moving_window {
   xcb_window_t window;
+  xcb_window_t other_window;
   int16_t x;
   int16_t y;
   uint16_t width;
@@ -102,11 +107,16 @@ struct moving_window {
 
 static struct moving_window moving_window_create(xcb_connection_t *connection,
                                                  const xcb_screen_t *screen,
-                                                 uint32_t color, int16_t x,
-                                                 int16_t y) {
+                                                 uint32_t color, bool borders,
+                                                 int16_t x, int16_t y) {
   const xcb_window_t window =
-      window_create(connection, screen, color, x, y, 150, 150);
-  return (struct moving_window){window, x, y, 150, 150, 0, 0};
+      window_create(connection, screen, color, false, x, y, 150, 150);
+  const xcb_window_t other_window =
+      window_create(connection, screen, color, true, x, y, 150, 150);
+  return borders ? (struct moving_window){window, other_window, x, y,
+                                          150,    150,          0, 0}
+                 : (struct moving_window){other_window, window, x, y,
+                                          150,          150,    0, 0};
 }
 
 /* Calculates collisions with the top and bottom edges of the screen. Doesn't
@@ -124,6 +134,38 @@ static void moving_window_send_position(const struct moving_window *window,
   const uint32_t coords[] = {window->x, window->y};
   xcb_configure_window(connection, window->window,
                        XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
+}
+
+static void moving_window_send_size(const struct moving_window *window,
+                                    xcb_connection_t *connection) {
+  const uint32_t size[] = {window->width, window->height};
+  xcb_configure_window(connection, window->window,
+                       XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT,
+                       size);
+}
+
+/* Toggles the window's decorations by unmapping the current window and mapping
+ * the other window. The new mapped window is moved and resized to the correct
+ * position and dimensions before mapping. */
+static void moving_window_swap(struct moving_window *window,
+                               xcb_connection_t *connection) {
+  xcb_unmap_window(connection, window->window);
+
+  xcb_window_t temp = window->window;
+  window->window = window->other_window;
+  window->other_window = temp;
+
+  moving_window_send_position(window, connection);
+  moving_window_send_size(window, connection);
+  xcb_map_window(connection, window->window);
+}
+
+/* Both windows get the atoms set */
+static void moving_window_setup(const struct moving_window *window,
+                                xcb_connection_t *connection,
+                                xcb_atom_t atoms[], const char *window_name) {
+  window_setup(connection, window->window, atoms, window_name);
+  window_setup(connection, window->other_window, atoms, window_name);
 }
 
 enum game_window { LEFT_PADDLE, BALL, RIGHT_PADDLE };
@@ -220,9 +262,13 @@ static void usage(const char *command_name) {
           "usage: %s\n"
           "\t[-lc {color}]\n"
           "\t[-bc {color}]\n"
-          "\t[-rc {color}]\n",
+          "\t[-rc {color}]\n"
+          "\t[-borders]\n"
+          "\t[+borders]\n",
           command_name);
 }
+
+static bool start_borders = true;
 
 static int parse_options(int argc, char *argv[]) {
   int return_code = 0;
@@ -237,6 +283,14 @@ static int parse_options(int argc, char *argv[]) {
         }
         goto next_arg;
       }
+    }
+    /* These are "swapped" like many xeyes options are */
+    if (strcmp(argv[i], "-borders") == 0) {
+      start_borders = true;
+      goto next_arg;
+    } else if (strcmp(argv[i], "+borders") == 0) {
+      start_borders = false;
+      goto next_arg;
     }
     fprintf(stderr, "unknown option: %s\n", argv[i]);
     return_code = 1;
@@ -353,25 +407,29 @@ int main(int argc, char *argv[]) {
   /* Create the ball */
   int16_t ball_startx = screen->width_in_pixels / 2 - 150 / 2;
   int16_t ball_starty = screen->height_in_pixels / 2 - 150 / 2;
-  struct moving_window ball = moving_window_create(
-      connection, screen, window_colors[BALL], ball_startx, ball_starty);
+  struct moving_window ball =
+      moving_window_create(connection, screen, window_colors[BALL],
+                           start_borders, ball_startx, ball_starty);
   ball.xspeed = 10;
   ball.yspeed = 10;
 
-  /* Create the paddles */
+  /* The paddles start 1 pixel down from the top because putting the left window
+   * at (0, 0) causes it to teleport to center after pressing b twice before
+   * moving the window (at least on my machine ¯\_(ツ)_/¯) */
   struct moving_window left_paddle = moving_window_create(
-      connection, screen, window_colors[LEFT_PADDLE], 0, 0);
+      connection, screen, window_colors[LEFT_PADDLE], start_borders, 0, 1);
   struct moving_window right_paddle =
       moving_window_create(connection, screen, window_colors[RIGHT_PADDLE],
-                           screen->width_in_pixels - 150, 0);
+                           start_borders, screen->width_in_pixels - 150, 1);
 
-  window_setup(connection, ball.window, atoms, "XCB pong");
-  window_setup(connection, left_paddle.window, atoms, "Left paddle");
-  window_setup(connection, right_paddle.window, atoms, "Right paddle");
+  moving_window_setup(&ball, connection, atoms, "XCB pong");
+  moving_window_setup(&left_paddle, connection, atoms, "Left paddle");
+  moving_window_setup(&right_paddle, connection, atoms, "Right paddle");
 
   xcb_map_window(connection, ball.window);
   xcb_map_window(connection, left_paddle.window);
   xcb_map_window(connection, right_paddle.window);
+
   xcb_flush(connection);
 
   bool lost = false;
@@ -416,6 +474,13 @@ int main(int argc, char *argv[]) {
           case XK_P:
             paused = false;
             break;
+          case XK_b:
+          case XK_B:
+            moving_window_swap(&left_paddle, connection);
+            moving_window_swap(&ball, connection);
+            moving_window_swap(&right_paddle, connection);
+            xcb_flush(connection);
+            break;
           }
         } else {
           switch (keysym) {
@@ -437,6 +502,48 @@ int main(int argc, char *argv[]) {
           case XK_P:
             paused = true;
             break;
+          case XK_b:
+          case XK_B:
+            moving_window_swap(&left_paddle, connection);
+            moving_window_swap(&ball, connection);
+            moving_window_swap(&right_paddle, connection);
+            xcb_flush(connection);
+            break;
+          }
+        }
+        break;
+      }
+      case XCB_MAP_NOTIFY: {
+        /* This event is received when the game starts and when window
+         * decorations are toggled. */
+        xcb_map_notify_event_t *mn = (xcb_map_notify_event_t *)event;
+        if (mn->window == ball.window && mn->override_redirect) {
+          /* It's unexpected for this request to return an X11 error, and such
+           * an error is handled in the event loop */
+          xcb_grab_keyboard_cookie_t cookie = xcb_grab_keyboard_unchecked(
+              connection, false, mn->window, XCB_CURRENT_TIME,
+              XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
+          xcb_grab_keyboard_reply_t *reply =
+              xcb_grab_keyboard_reply(connection, cookie, NULL);
+          if (reply != NULL) {
+            switch (reply->status) {
+            case XCB_GRAB_STATUS_SUCCESS:
+              break;
+            case XCB_GRAB_STATUS_ALREADY_GRABBED:
+            case XCB_GRAB_STATUS_FROZEN:
+              /* Shouldn't happen if the player toggled window borders while
+               * playing */
+              fputs("Keyboard already grabbed by another client! You're on "
+                    "your own now!\n",
+                    stderr);
+              break;
+            default:
+              /* Shouldn't happen unless there's some weird magic happening */
+              fprintf(stderr, "Unexpected keyboard grab status: %" PRIu8 "\n",
+                      reply->status);
+              break;
+            }
+            free(reply);
           }
         }
       } break;
