@@ -274,8 +274,8 @@ int main(int argc, char *argv[]) {
   struct moving_window ball =
       moving_window_create(connection, screen, window_colors[BALL],
                            start_borders, ball_startx, ball_starty);
-  ball.xspeed = 10;
-  ball.yspeed = 10;
+  ball.xspeed = 7;
+  ball.yspeed = 7;
 
   /* The paddles start 1 pixel down from the top because putting the left window
    * at (0, 0) causes it to teleport to center after pressing b twice before
