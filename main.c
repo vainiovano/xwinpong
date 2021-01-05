@@ -286,7 +286,7 @@ int main(int argc, char *argv[]) {
       moving_window_create(connection, screen, window_colors[RIGHT_PADDLE],
                            start_borders, screen->width_in_pixels - 150, 1);
 
-  moving_window_setup(&ball, connection, atoms, "XCB pong");
+  moving_window_setup(&ball, connection, atoms, "Xwinpong");
   moving_window_setup(&left_paddle, connection, atoms, "Left paddle");
   moving_window_setup(&right_paddle, connection, atoms, "Right paddle");
 
