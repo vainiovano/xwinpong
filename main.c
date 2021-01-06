@@ -143,6 +143,7 @@ static int parse_options(int argc, char *argv[]) {
           fputs("missing argument from the last option\n", stderr);
           return_code = 1;
         } else {
+          /* TODO: is using argv like this guaranteed to be safe? */
           requested_window_colors[j] = argv[++i];
         }
         goto next_arg;
