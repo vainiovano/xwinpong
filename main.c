@@ -2,6 +2,7 @@
 
 #include "window.h"
 
+#include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -127,11 +128,13 @@ static void usage(const char *command_name) {
           "\t[-lc {color}]\n"
           "\t[-bc {color}]\n"
           "\t[-rc {color}]\n"
+          "\t[-fps {number}]\n"
           "\t[-borders]\n"
           "\t[+borders]\n",
           command_name);
 }
 
+static uint32_t fps = 30;
 static bool start_borders = true;
 
 static int parse_options(int argc, char *argv[]) {
@@ -148,6 +151,30 @@ static int parse_options(int argc, char *argv[]) {
         }
         goto next_arg;
       }
+    }
+
+    if (strcmp(argv[i], "-fps") == 0) {
+      if (i == argc - 1) {
+        fputs("missing argument from the last option\n", stderr);
+        return_code = 1;
+      } else {
+        errno = 0;
+        long f = strtol(argv[++i], NULL, 10);
+        if (errno) {
+          fprintf(
+              stderr,
+              "Failed to parse fps number: %s; using the default value (30)\n",
+              strerror(errno));
+          goto next_arg;
+        }
+        /* 1 is invalid because I don't want to set tv_sec :) */
+        if (f <= 1) {
+          fputs("Invalid fps value; using the default value (30)\n", stderr);
+          goto next_arg;
+        }
+        fps = f;
+      }
+      goto next_arg;
     }
     /* These are "swapped" like many xeyes options are */
     if (strcmp(argv[i], "-borders") == 0) {
@@ -275,8 +302,8 @@ int main(int argc, char *argv[]) {
   struct moving_window ball =
       moving_window_create(connection, screen, window_colors[BALL],
                            start_borders, ball_startx, ball_starty);
-  ball.xspeed = 7;
-  ball.yspeed = 7;
+  ball.xspeed = 170;
+  ball.yspeed = 170;
 
   /* The paddles start 1 pixel down from the top because putting the left window
    * at (0, 0) causes it to teleport to center after pressing b twice before
@@ -297,6 +324,7 @@ int main(int argc, char *argv[]) {
 
   xcb_flush(connection);
 
+  const float delta = 1.f / fps;
   bool lost = false;
   bool paused = false;
   int exit_code = EXIT_SUCCESS;
@@ -351,17 +379,17 @@ int main(int argc, char *argv[]) {
           switch (keysym) {
           case XK_w:
           case XK_W:
-            left_paddle.yspeed -= 5;
+            left_paddle.yspeed -= 100;
             break;
           case XK_s:
           case XK_S:
-            left_paddle.yspeed += 5;
+            left_paddle.yspeed += 100;
             break;
           case XK_Up:
-            right_paddle.yspeed -= 5;
+            right_paddle.yspeed -= 100;
             break;
           case XK_Down:
-            right_paddle.yspeed += 5;
+            right_paddle.yspeed += 100;
             break;
           case XK_p:
           case XK_P:
@@ -450,9 +478,9 @@ int main(int argc, char *argv[]) {
       goto end;
     }
 
-    moving_window_move(&left_paddle, screen);
-    moving_window_move(&right_paddle, screen);
-    moving_window_move(&ball, screen);
+    moving_window_move(&left_paddle, screen, delta);
+    moving_window_move(&right_paddle, screen, delta);
+    moving_window_move(&ball, screen, delta);
 
     /* TODO: try to deduplicate this code or make it more beautiful */
     if (ball.x < left_paddle.x + left_paddle.width) {
@@ -461,12 +489,12 @@ int main(int argc, char *argv[]) {
         collide(&ball.xspeed, &ball.x, left_paddle.x + left_paddle.width,
                 INT16_MAX);
         /* Make the game advance faster */
-        ball.xspeed += 1;
+        ball.xspeed += 15;
 
         ball.yspeed += ((ball.y + ball.height / 2) -
-                        (left_paddle.y + left_paddle.height / 2)) /
-                       5;
-        ball.yspeed = clamp(ball.yspeed, -20, 20);
+                        (left_paddle.y + left_paddle.height / 2)) *
+                       4;
+        ball.yspeed = clamp(ball.yspeed, -400, 400);
       } else {
         lost = true;
       }
@@ -474,12 +502,12 @@ int main(int argc, char *argv[]) {
       if (!lost && ball.y + ball.height > right_paddle.y &&
           ball.y < right_paddle.y + right_paddle.height) {
         collide(&ball.xspeed, &ball.x, INT16_MIN, right_paddle.x - ball.width);
-        ball.xspeed -= 1;
+        ball.xspeed -= 15;
 
         ball.yspeed += ((ball.y + ball.height / 2) -
-                        (right_paddle.y + right_paddle.height / 2)) /
-                       5;
-        ball.yspeed = clamp(ball.yspeed, -20, 20);
+                        (right_paddle.y + right_paddle.height / 2)) *
+                       4;
+        ball.yspeed = clamp(ball.yspeed, -400, 400);
       } else {
         lost = true;
       }
@@ -502,7 +530,7 @@ int main(int argc, char *argv[]) {
 
     const struct timespec wait_time = {
         .tv_sec = 0,
-        .tv_nsec = 50000000,
+        .tv_nsec = 1000000000.f * delta,
     };
     nanosleep(&wait_time, NULL);
   }

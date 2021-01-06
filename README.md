@@ -53,6 +53,7 @@ option | meaning | default
 **-lc** *color* | left paddle color | black
 **-bc** *color* | ball color | white
 **-rc** *color* | right paddle color | black
+**-fps** *number* | maximum frames per second | 30
 **-borders** | start with window borders enabled | borders enabled
 **+borders** | start with window borders disabled | borders enabled
 
