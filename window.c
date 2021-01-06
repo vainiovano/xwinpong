@@ -58,6 +58,10 @@ static void window_setup(xcb_connection_t *connection, xcb_window_t window,
   xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
                       XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(window_name),
                       window_name);
+  /* TODO: set the instance name in a better way */
+  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
+                      XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8, 18,
+                      "xwinpong\0Xwinpong");
 }
 
 struct moving_window moving_window_create(xcb_connection_t *connection,
