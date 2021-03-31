@@ -42,7 +42,7 @@ void moving_window_setup(const struct moving_window *window,
 /* Moves the window and calculates collisions with the top and bottom edges of
  * the screen. Doesn't send X11 requests. */
 void moving_window_move(struct moving_window *window,
-                        const xcb_screen_t *screen, float delta);
+                        const xcb_screen_t *screen, double delta);
 
 void moving_window_send_position(const struct moving_window *window,
                                  xcb_connection_t *connection);

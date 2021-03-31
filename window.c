@@ -87,9 +87,9 @@ void moving_window_setup(const struct moving_window *window,
 }
 
 void moving_window_move(struct moving_window *window,
-                        const xcb_screen_t *screen, float delta) {
-  const float screen_resolution_multiplier =
-      (float)screen->width_in_pixels / 1000.0f;
+                        const xcb_screen_t *screen, double delta) {
+  const double screen_resolution_multiplier =
+      (double)screen->width_in_pixels / 1000.;
   window->x += window->xspeed * screen_resolution_multiplier * delta;
   window->y += window->yspeed * screen_resolution_multiplier * delta;
   collide(&window->yspeed, &window->y, 0,

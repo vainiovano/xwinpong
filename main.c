@@ -324,7 +324,7 @@ int main(int argc, char *argv[]) {
 
   xcb_flush(connection);
 
-  const float delta = 1.f / fps;
+  const double delta = 1. / fps;
   bool lost = false;
   bool paused = false;
   int exit_code = EXIT_SUCCESS;
@@ -530,7 +530,7 @@ int main(int argc, char *argv[]) {
 
     const struct timespec wait_time = {
         .tv_sec = 0,
-        .tv_nsec = 1000000000.f * delta,
+        .tv_nsec = 1000000000. * delta,
     };
     nanosleep(&wait_time, NULL);
   }
