@@ -19,7 +19,7 @@ that bounce around your screen.
 #### Debian
 Assuming that you already have `make` and a C compiler installed
 ```
-$ sudo apt install libxcb1-dev libxcb-keysyms1-dev libxcb-util0-dev
+$ sudo apt install libxcb1-dev libxcb-keysyms1-dev libxcb-util-dev
 ```
 
 ### Compiling
